@@ -1,7 +1,7 @@
 # **ESP_8_BIT:** Atari 8 bit computers, NES and SMS game consoles on your TV with nothing more than a ESP32 and a sense of nostalgia
 ## Supports NTSC/PAL color composite video output, Bluetooth Classic or IR keyboards and joysticks; just the thing when we could all use a little distraction
 ## Supports classic NES (or SNES) one or two controllers hardwired to the ESP32. SELECT + LEFT to access file menu. SELECT + START -> reset, SD card support FAT 8.3 filenames
-
+## Supports also the IR keyboard K8561 and a terminal program like putty, to simulate a minimalistic keyboard over a serial connection.
 ![ESP_8_BIT](img/esp8bit.jpg)
 
 **ESP_8_BIT** is designed to run on the ESP32 within the Arduino IDE framework. See it in action on [Youtube](https://www.youtube.com/watch?v=qFRkfeuTUrU). Schematic is pretty simple:
