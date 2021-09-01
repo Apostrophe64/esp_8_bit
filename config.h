@@ -3,6 +3,12 @@
 #define PAL 0
 #define NTSC 1
 
+// Machinetypes: ATARIXL, ATARI800, ATARI400
+#define ATARIXL  0 // AtariXL  with 58KB
+#define ATARI800 1 // Atari800 with 48KB
+#define ATARI400 2 // Atari400 with 52KB
+
+
 /******************************************************************/
 /*Some stats about where we spend our time*/
 /******************************************************************/
@@ -11,12 +17,17 @@
 /******************************************************************/
 /*Choose one of the video standards: PAL or NTSC*/
 /******************************************************************/
-#define VIDEO_STANDARD NTSC
+#define VIDEO_STANDARD PAL
 
 /******************************************************************/
 /*Choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI*/
 /******************************************************************/
-#define EMULATOR EMU_NES
+#define EMULATOR EMU_ATARI
+
+/******************************************************************/
+/*For the Atari emulator chose one of the machinetypes: ATARIXL, ATARI800, ATARI400                        */
+/******************************************************************/
+#define ATARI800_MACHINE_TYPE ATARI400
 
 /******************************************************************/
 /*Many emus work fine on a single core (S2), file system access can cause a little flickering*/
@@ -58,21 +69,25 @@
 
 // Define this to enable SD card with FAT 8.3 filenames
 // Note that each emulator has its own folder. Place ROMs under /nonfredo for NES, /smsplus for SMS and /atari800 for atari
-//#define USE_SD_CARD
+#define USE_SD_CARD
 // SD card pin mapping
-#define CONFIG_SD_CS 15
-#define CONFIG_SD_MOSI 13
-#define CONFIG_SD_SCK 14
-#define CONFIG_SD_MISO 12
+	#define CONFIG_SD_CS   26 // 15
+	#define CONFIG_SD_MOSI 14	// 13
+	#define CONFIG_SD_SCK  33 // 14
+	#define CONFIG_SD_MISO 13	// 12
 
 /****************************************************************/
 /*Controller support*/
 /****************************************************************/
-#define WEBTV_KEYBOARD
-#define RETCON_CONTROLLER
-#define FLASHBACK_CONTROLLER
+
+
+//#define WEBTV_KEYBOARD
+//#define SERIAL_KEYBOARD
+#define K8561_KEYBOARD
+//#define RETCON_CONTROLLER
+//#define FLASHBACK_CONTROLLER
 //#define APPLE_TV_CONTROLLER
-#define NES_CONTROLLER	//Enable only NES OR SNES not both!
+//#define NES_CONTROLLER	//Enable only NES OR SNES not both!
 //#define SNES_CONTROLLER	//Enable only NES OR SNES not both!
 
 /****************************************************************/

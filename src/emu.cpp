@@ -83,6 +83,10 @@ public:
         _buf = new uint8_t[DIR_BLOCK_SIZE];
         if (!_buf)
             return;
+
+        // If necessary, reformat CrapFS
+        // reformat();
+
         _dir = (FlashFile*)_buf;
         esp_err_t err = esp_partition_read(_part, 0, _buf, DIR_BLOCK_SIZE);
         if (err) {
@@ -114,6 +118,7 @@ public:
 
     void reformat()
     {
+        printf("formating CrapFS\n");
         esp_partition_erase_range(_part,0,_part->size); // erase entire partition
         memset(_buf,0xFF,sizeof(DIR_BLOCK_SIZE));       // only use the first 16k of first block
     }

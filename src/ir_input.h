@@ -18,6 +18,7 @@
 #ifndef __ir_input__
 #define __ir_input__
 
+
 // generate events on state changes of IR pin, feed to state machines.
 // event timings  have a resolution of HSYNC, timing is close enough between 15720 and 15600 to make this work
 // poll to synthesize hid events at every frame
@@ -27,8 +28,33 @@ uint8_t _ir_last = 0;
 uint8_t _ir_count = 0;
 uint8_t _keyDown = 0;
 uint8_t _keyUp = 0;
+uint16_t _K8561KeyCode = 0xFFFF;
 
 void IRAM_ATTR ir_event(uint8_t ticks, uint8_t value); // t is HSYNCH ticks, v is value
+void IRAM_ATTR ir_webtv(uint8_t t, uint8_t v);
+void IRAM_ATTR ir_K8561(uint8_t t, uint8_t v);
+void IRAM_ATTR ir_retcon(uint8_t t, uint8_t v);
+void IRAM_ATTR ir_apple(uint8_t t, uint8_t v);
+void IRAM_ATTR ir_flashback(uint8_t t, uint8_t v);
+
+int get_hid_apple(uint8_t* dst);
+int get_hid_retcon(uint8_t* dst);
+int get_hid_flashback(uint8_t* dst);
+int get_hid_nes(uint8_t* dst);
+int get_hid_snes(uint8_t* dst);
+int get_hid_webtv(uint8_t* dst);
+int get_hid_serial(uint8_t* dst);
+int get_hid_K8561(uint8_t* dst);
+
+typedef class SDL_KEYCODE
+{
+	public:
+		SDL_KEYCODE() {SDL_Scancode = 0; key_mod = 0;}
+		uint8_t SDL_Scancode;
+		uint8_t key_mod;
+} SDL_KEYCODE;
+
+void _K8561_To_SDL_Scancode (uint16_t cmd, SDL_KEYCODE& SDL_Scancode);
 
 inline void IRAM_ATTR ir_sample()
 {
@@ -136,7 +162,7 @@ int get_hid_nes(uint8_t* dst)
   
   return _nes.get_hid(dst);		
 }
-#endif
+#endif // NES_CONTROLLER
 
 //==================================================================
 //Classic hard wired SNES controllers
@@ -188,7 +214,7 @@ int get_hid_snes(uint8_t* dst)
   
   return _snes.get_hid(dst);		
 }
-#endif
+#endif // SNES_CONTROLLER
 
 //==========================================================
 //==========================================================
@@ -268,7 +294,7 @@ void IRAM_ATTR ir_apple(uint8_t t, uint8_t v)
   }
 }
 
-#endif
+#endif // APPLE_TV_CONTROLLER
 
 //==========================================================
 //==========================================================
@@ -352,7 +378,7 @@ void IRAM_ATTR ir_flashback(uint8_t t, uint8_t v)
   }
 }
 
-#endif
+#endif // FLASHBACK_CONTROLLER
 
 //==========================================================
 //==========================================================
@@ -440,7 +466,7 @@ void IRAM_ATTR ir_retcon(uint8_t t, uint8_t v)
   }
 }
 
-#endif
+#endif // RETCON_CONTROLLER
 
 
 //==========================================================
@@ -724,13 +750,16 @@ void IRAM_ATTR ir_webtv(uint8_t t, uint8_t v)
       _state = bits+2;
     }
 }
-#endif
+#endif // WEBTV_KEYBOARD
 
 // called from interrupt
 void IRAM_ATTR ir_event(uint8_t t, uint8_t v)
 {
 #ifdef WEBTV_KEYBOARD
     ir_webtv(t,v);
+#endif
+#ifdef K8561_KEYBOARD
+    ir_K8561(t,v);
 #endif
 #ifdef RETCON_CONTROLLER
     ir_retcon(t,v);
@@ -770,6 +799,631 @@ int get_hid_ir(uint8_t* dst)
 #ifdef WEBTV_KEYBOARD
         return get_hid_webtv(dst);
 #endif
+#ifdef SERIAL_KEYBOARD
+		return get_hid_serial(dst);
+#endif
+#ifdef K8561_KEYBOARD
+		return get_hid_K8561(dst);
+#endif
 	return 0;
 }
+
+
+//==========================================================
+//==========================================================
+//  K8561 keyboard
+#ifdef K8561_KEYBOARD
+
+#define STATE_LEFT_SHIFT    0x01
+#define STATE_RIGHT_SHIFT   0x02
+#define STATE_LEFT_CTRL     0x04
+#define STATE_RIGHT_CTRL     0x08
+#define STATE_LEFT_ALT      0x10
+#define STATE_RIGHT_ALT     0x20
+
+#if (1)
+// Will be called every frame (25Hz/30Hz)
+int get_hid_K8561(uint8_t* dst)
+{
+	bool dirty = false;
+	SDL_KEYCODE SDL_Code;
+	
+	static bool bKeyDown = false;
+	static uint16_t lastK8561KeyCode = 0xFFFF;
+	static int wt_expire = 0;
+	
+	// if (_K8561KeyCode != lastK8561KeyCode)
+	if (_K8561KeyCode != 0xFFFF)
+	{
+		lastK8561KeyCode = _K8561KeyCode;
+
+		_K8561_To_SDL_Scancode(_K8561KeyCode, SDL_Code);
+
+		bKeyDown = ((_K8561KeyCode & 0x0100) != 0) ? false : true;
+#if (0)
+		printf("data:0x%04x\t -> aascii=0x%02x mod=0x%02x %\t", _K8561KeyCode, SDL_Code.SDL_Scancode, SDL_Code.key_mod);
+		for (int k = 15; k >= 0; k--)
+		   printf("%c", (_K8561KeyCode & 1 << k) ? '1' : '0');
+		printf("\n");		
 #endif
+		_K8561KeyCode = 0xFFFF;
+		if (bKeyDown)
+		{
+			printf("Key down\n");
+			if (SDL_Code.SDL_Scancode != 0)
+			{
+				// generate hid keyboard events if anything was pressed or changed...
+				// A1 01 mods XX k k k k k k
+				dst[0] = 0xA1;
+				dst[1] = 0x01;
+				dst[2] = SDL_Code.key_mod;
+				dst[3] = 0;
+				dst[4] = SDL_Code.SDL_Scancode;  // Scancode
+				dirty = true;
+				wt_expire = 40;
+			}
+		}
+		else
+		{
+			printf("Key up\n");
+			dst[0] = 0xA1;
+			dst[1] = 0x01;
+			dst[2] = SDL_Code.key_mod;
+			dst[3] = 0;
+			dst[4] = SDL_Code.SDL_Scancode;
+			dirty = true;
+			wt_expire = 1;
+		}	
+	}
+	else
+	{
+		if (wt_expire > 0)
+		{
+			wt_expire--;
+			if (wt_expire == 0)
+			{
+				printf("Force key up\n");			
+				dst[0] = 0xA1;
+				dst[1] = 0x01;
+				dst[2] = 0;
+				dst[3] = 0;
+				dst[4] = 0;  // Scancode
+				dirty = true;	
+			}
+		}		
+	}
+	return dirty ? 10 : 0;
+}
+#else
+// Will be called every frame (25Hz/30Hz)
+int get_hid_K8561(uint8_t* dst)
+{
+	bool dirty = false;
+	static int wt_expire = 0;
+	int wt_modifiers = 0;
+	SDL_KEYCODE SDL_Code;
+	
+	static int counter = 0;
+
+	// To prevent too many keystrokes from being sent
+	// only communicate the last keystroke every 200ms.
+	if ((counter++ >= 10) && (_K8561KeyCode != 0xffff))
+	{
+		_K8561_To_SDL_Scancode(_K8561KeyCode, SDL_Code);
+#if (0)
+		printf("data:0x%04x\t -> aascii=0x%02x mod=0x%02x %\t", _K8561KeyCode, SDL_Code.SDL_Scancode, SDL_Code.key_mod);
+		for (int k = 15; k >= 0; k--)
+		   printf("%c", (_K8561KeyCode & 1 << k) ? '1' : '0');
+		printf("\n");		
+#endif
+  	    _K8561KeyCode = 0xffff;
+	    counter = 0;	
+	}	
+	
+	if (SDL_Code.SDL_Scancode != 0)
+	{
+		// generate hid keyboard events if anything was pressed or changed...
+		// A1 01 mods XX k k k k k k
+		dst[0] = 0xA1;
+		dst[1] = 0x01;
+		dst[2] = SDL_Code.key_mod;
+		dst[3] = 0;
+		dst[4] = SDL_Code.SDL_Scancode;  // Scancode
+		wt_expire = 10;
+		dirty = true;
+	}
+	else
+	{
+		if (wt_expire-- == 0)
+		{
+			dst[0] = 0xA1;
+			dst[1] = 0x01;
+			dst[2] = 0;
+			dst[3] = 0;
+			dst[4] = 0;  // Scancode
+			dirty = true;
+		}			
+	}
+	
+    return dirty ? 10 : 0;
+}
+#endif
+
+
+#define START(_t) (_t >= 23 && _t <= 28) // Streuung zwischen 25 und 26
+#define SHORT(_t) (_t >= 5 && _t <= 8)   // Streuung zwischen 6 und 7
+#define LONG(_t)  (_t >= 11 && _t <= 15) // Streuung zwischen 12 und 14
+void IRAM_ATTR ir_K8561(uint8_t t, uint8_t ir)
+{
+    static uint16_t code = 0;
+    static uint8_t bit = 0;
+    static bool bStartBit = false;
+
+    if (ir == 1)
+    {
+      if (bStartBit == false)
+      {
+          if (START(t)==true)
+          {
+            bit = 0;
+            code = 0;
+            bStartBit = true;
+          }
+      }
+      else
+      {
+          if (SHORT(t)==true)
+          {
+               code = code << 1;
+               bit++;
+          }
+          else if (LONG(t)==true)
+          {
+              code = (code<<1) | 1;
+              bit++;
+          }
+          else // Invalid bit length
+          {
+              bStartBit = false;
+          }
+
+          if (bit == 12)
+          {
+              bStartBit = false;
+              _K8561KeyCode = code;
+          }
+      }
+   }
+}
+
+void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
+{
+    static uint8_t state;
+
+    uint8_t SDL_Scancode = 0;
+	uint8_t key_mod = 0;
+	
+    switch (cmd)
+    {
+        case 0x06fc: state |=  STATE_LEFT_SHIFT;    break;              // pressed left shift
+        case 0x07fc: state &= ~STATE_LEFT_SHIFT;    break;              // released left shift      
+        case 0x0c2a: state |=  STATE_RIGHT_SHIFT;   break;              // pressed right shift
+        case 0x0d2a: state &= ~STATE_RIGHT_SHIFT;   break;              // released right shift
+        case 0x02b2: state |=  STATE_LEFT_CTRL;     break;              // pressed left ctrl
+        case 0x03b2: state &= ~STATE_LEFT_CTRL;     break;              // released left ctrl
+        case 0x0cc2: state |=  STATE_LEFT_ALT;      break;              // pressed left alt
+        case 0x0dc2: state &= ~STATE_LEFT_ALT;      break;              // released left alt
+        case 0x02e2: state |=  STATE_RIGHT_ALT;     break;              // pressed right alt
+        case 0x03e2: state &= ~STATE_RIGHT_ALT;     break;              // released right alt
+        case 0x0d4c:                                                    // caps lock
+        {
+          // Toggle the shift state
+          if (state & (STATE_LEFT_SHIFT | STATE_RIGHT_SHIFT)) 
+          {
+            state &= ~STATE_LEFT_SHIFT;
+            state &= ~STATE_RIGHT_SHIFT;
+          }
+          else
+          {
+            state |=  STATE_LEFT_SHIFT;
+          }
+          break;
+        }
+	}
+
+    cmd &= 0xFEFF; // Clear the KeyUp Bit
+    if (state & (STATE_LEFT_SHIFT | STATE_RIGHT_SHIFT))
+    {
+        switch (cmd)
+        {
+          case 0x0444:	SDL_Scancode = 0x1E; key_mod = KEY_MOD_LSHIFT;            break; // '!'
+          case 0x0cc4:  SDL_Scancode = 0x34; key_mod = KEY_MOD_LSHIFT;            break; // '\'
+          case 0x0ca4:  SDL_Scancode = 0x21; key_mod = KEY_MOD_LSHIFT;            break; // '$'
+          case 0x0c64:  SDL_Scancode = 0x22; key_mod = KEY_MOD_LSHIFT;            break; // '%'
+          case 0x02e4:  SDL_Scancode = 0x24; key_mod = KEY_MOD_LSHIFT;            break; // '&'
+          case 0x0000:  SDL_Scancode = 0x38; key_mod = 0;                         break; // '/'
+          case 0x0880:  SDL_Scancode = 0x26; key_mod = KEY_MOD_LSHIFT;            break; // '('
+          case 0x0840:  SDL_Scancode = 0x27; key_mod = KEY_MOD_LSHIFT;            break; // ')'
+          case 0x04c0:  SDL_Scancode = 0x2E; key_mod = 0;                         break; // '='
+          case 0x0414:  SDL_Scancode = 0x38; key_mod = KEY_MOD_LSHIFT;            break; // '?'
+          case 0x0c34:  SDL_Scancode = 0x14; key_mod = 0;  			  break; // 'Q'
+          case 0x02b4:  SDL_Scancode = 0x1A; key_mod = 0;  			  break; // 'W'
+          case 0x0274:  SDL_Scancode = 0x08; key_mod = 0;  			  break; // 'E'
+          case 0x0af4:  SDL_Scancode = 0x15; key_mod = 0;  			  break; // 'R'
+          case 0x040c:  SDL_Scancode = 0x17; key_mod = 0;  			  break; // 'T'
+          case 0x0c8c:  SDL_Scancode = 0x1D; key_mod = 0;  			  break; // 'Z'
+          case 0x0820:  SDL_Scancode = 0x18; key_mod = 0;  			  break; // 'U'
+          case 0x04a0:  SDL_Scancode = 0x0C; key_mod = 0;  			  break; // 'I'
+          case 0x0460:  SDL_Scancode = 0x12; key_mod = 0;  			  break; // 'O'
+          case 0x0ce0:  SDL_Scancode = 0x13; key_mod = 0;  			  break; // 'P'
+          case 0x0aea:  SDL_Scancode = 0x25; key_mod = KEY_MOD_LSHIFT;            break; // '*'
+          case 0x02cc:  SDL_Scancode = 0x04; key_mod = 0; 			  break; // 'A'
+          case 0x0c2c:  SDL_Scancode = 0x16; key_mod = 0; 			  break; // 'S'
+          case 0x02ac:  SDL_Scancode = 0x07; key_mod = 0; 			  break; // 'D'
+          case 0x026c:  SDL_Scancode = 0x09; key_mod = 0; 			  break; // 'F'
+          case 0x0aec:  SDL_Scancode = 0x0A; key_mod = 0; 			  break; // 'G'
+          case 0x0c1c:  SDL_Scancode = 0x0B; key_mod = 0; 			  break; // 'H'
+          case 0x0810:  SDL_Scancode = 0x0D; key_mod = 0; 			  break; // 'J'
+          case 0x0490:  SDL_Scancode = 0x0E; key_mod = 0; 			  break; // 'K'
+          case 0x0450:  SDL_Scancode = 0x0F; key_mod = 0; 			  break; // 'L'
+          case 0x029c:  SDL_Scancode = 0x1C; key_mod = 0;  			  break; // 'Y'
+          case 0x025c:  SDL_Scancode = 0x1B; key_mod = 0;  			  break; // 'X'
+          case 0x0adc:  SDL_Scancode = 0x06; key_mod = 0;  			  break; // 'C'
+          case 0x023c:  SDL_Scancode = 0x19; key_mod = 0;  			  break; // 'V'
+          case 0x0abc:  SDL_Scancode = 0x05; key_mod = 0;  			  break; // 'B'
+          case 0x0a7c:  SDL_Scancode = 0x11; key_mod = 0;  			  break; // 'N'
+          case 0x0430:  SDL_Scancode = 0x10; key_mod = 0;  			  break; // 'M'
+          case 0x025a:  SDL_Scancode = 0x33; key_mod = 0; 			  break; // ';'
+          case 0x0cb0:  SDL_Scancode = 0x33; key_mod = KEY_MOD_LSHIFT;            break; // ':'
+          case 0x0c1a:  SDL_Scancode = 0x34; key_mod = 0; 			  break; // '''
+          case 0x0c70:  SDL_Scancode = 0x2D; key_mod = KEY_MOD_LSHIFT;            break; // '_'
+          case 0x0c46:  SDL_Scancode = 0x37; key_mod = KEY_MOD_LSHIFT;            break; // '>'
+          case 0x0428: 	SDL_Scancode = 0x3E; key_mod = KEY_MOD_LSHIFT;            break; // Shift F5
+          case 0x02f0: 	SDL_Scancode = 0x28; key_mod = KEY_MOD_LSHIFT;            break; // Shift ENTER
+        }
+    }
+    else if (state & (STATE_LEFT_ALT | STATE_RIGHT_ALT))
+    {
+        switch (cmd)
+        {
+            case 0x0880: SDL_Scancode = 0x2F; key_mod = KEY_MOD_LSHIFT;  break; // '['
+            case 0x0840: SDL_Scancode = 0x30; key_mod = KEY_MOD_LSHIFT;  break; // ']'
+			case 0x0414: SDL_Scancode = 0x31; key_mod = 0;  				break; // '\'	
+            case 0x0c34: SDL_Scancode = 0x1F; key_mod = KEY_MOD_LSHIFT;  break; // '@'
+            case 0x0c46: SDL_Scancode = 0x31; key_mod = KEY_MOD_LSHIFT;	break; // '|'
+ 
+		}
+    }
+    else if (state & (STATE_LEFT_CTRL | STATE_RIGHT_CTRL))
+    {
+        switch (cmd)
+        {
+		  // Atari special graphic symbols...
+          case 0x0c34:	SDL_Scancode = 0x14; key_mod = KEY_MOD_LCTRL;	break; // 'Q'
+          case 0x02b4:	SDL_Scancode = 0x1A; key_mod = KEY_MOD_LCTRL; 	break; // 'W'
+          case 0x0274:	SDL_Scancode = 0x08; key_mod = KEY_MOD_LCTRL;	break; // 'E'
+          case 0x0af4:	SDL_Scancode = 0x15; key_mod = KEY_MOD_LCTRL;	break; // 'R'
+          case 0x040c:	SDL_Scancode = 0x17; key_mod = KEY_MOD_LCTRL;	break; // 'T'
+          case 0x0c8c:	SDL_Scancode = 0x1D; key_mod = KEY_MOD_LCTRL;  	break; // 'Z'
+          case 0x0820:	SDL_Scancode = 0x18; key_mod = KEY_MOD_LCTRL;  	break; // 'U'
+          case 0x04a0:	SDL_Scancode = 0x0C; key_mod = KEY_MOD_LCTRL;  	break; // 'I'
+          case 0x0460:	SDL_Scancode = 0x12; key_mod = KEY_MOD_LCTRL;  	break; // 'O'
+          case 0x0ce0:	SDL_Scancode = 0x13; key_mod = KEY_MOD_LCTRL;  	break; // 'P'
+          case 0x02cc:	SDL_Scancode = 0x04; key_mod = KEY_MOD_LCTRL; 	break; // 'A'
+          case 0x0c2c:	SDL_Scancode = 0x16; key_mod = KEY_MOD_LCTRL; 	break; // 'S'
+          case 0x02ac:	SDL_Scancode = 0x07; key_mod = KEY_MOD_LCTRL; 	break; // 'D'
+          case 0x026c:	SDL_Scancode = 0x09; key_mod = KEY_MOD_LCTRL; 	break; // 'F'
+          case 0x0aec:	SDL_Scancode = 0x0A; key_mod = KEY_MOD_LCTRL; 	break; // 'G'
+          case 0x0c1c:	SDL_Scancode = 0x0B; key_mod = KEY_MOD_LCTRL; 	break; // 'H'
+          case 0x0810:	SDL_Scancode = 0x0D; key_mod = KEY_MOD_LCTRL; 	break; // 'J'
+          case 0x0490:	SDL_Scancode = 0x0E; key_mod = KEY_MOD_LCTRL; 	break; // 'K'
+          case 0x0450:	SDL_Scancode = 0x0F; key_mod = KEY_MOD_LCTRL; 	break; // 'L'
+          case 0x029c:	SDL_Scancode = 0x1C; key_mod = KEY_MOD_LCTRL;  	break; // 'Y'
+          case 0x025c:	SDL_Scancode = 0x1B; key_mod = KEY_MOD_LCTRL;  	break; // 'X'
+          case 0x0adc:	SDL_Scancode = 0x06; key_mod = KEY_MOD_LCTRL;  	break; // 'C'
+          case 0x023c:	SDL_Scancode = 0x19; key_mod = KEY_MOD_LCTRL;  	break; // 'V'
+          case 0x0abc:	SDL_Scancode = 0x05; key_mod = KEY_MOD_LCTRL;  	break; // 'B'
+          case 0x0a7c:	SDL_Scancode = 0x11; key_mod = KEY_MOD_LCTRL;  	break; // 'N'
+          case 0x0430:	SDL_Scancode = 0x10; key_mod = KEY_MOD_LCTRL;  	break; // 'M'
+        }
+    }
+    else
+    {
+        switch (cmd)
+        {
+			case 0x0444:	SDL_Scancode = 0x1E; key_mod = 0;	break; // '1'
+			case 0x0cc4:	SDL_Scancode = 0x1F; key_mod = 0;	break; // '2'
+			case 0x0424:	SDL_Scancode = 0x20; key_mod = 0;	break; // '3'
+			case 0x0ca4:	SDL_Scancode = 0x21; key_mod = 0;	break; // '4'
+			case 0x0c64:	SDL_Scancode = 0x22; key_mod = 0; 	break; // '5'
+			case 0x02e4:	SDL_Scancode = 0x23; key_mod = 0;	break; // '6'
+			case 0x0000:	SDL_Scancode = 0x24; key_mod = 0;	break; // '7'
+			case 0x0880:	SDL_Scancode = 0x25; key_mod = 0;	break; // '8'
+			case 0x0840:	SDL_Scancode = 0x26; key_mod = 0;	break; // '9'
+                        case 0x04c0:	SDL_Scancode = 0x27; key_mod = 0;       break; // '0'
+
+			case 0x0c34:	SDL_Scancode = 0x14; key_mod = 0;  	break; // 'q'
+			case 0x02b4:	SDL_Scancode = 0x1A; key_mod = 0;  	break; // 'w'
+			case 0x0274:	SDL_Scancode = 0x08; key_mod = 0;  	break; // 'e'
+			case 0x0af4:	SDL_Scancode = 0x15; key_mod = 0;  	break; // 'r'
+			case 0x040c:	SDL_Scancode = 0x17; key_mod = 0;  	break; // 't'
+			case 0x0c8c:	SDL_Scancode = 0x1D; key_mod = 0;  	break; // 'z'
+			case 0x0820:	SDL_Scancode = 0x18; key_mod = 0;  	break; // 'u'
+			case 0x04a0:	SDL_Scancode = 0x0C; key_mod = 0;  	break; // 'i'
+			case 0x0460:	SDL_Scancode = 0x12; key_mod = 0;  	break; // 'o'
+			case 0x0ce0:	SDL_Scancode = 0x13; key_mod = 0;  	break; // 'p'
+			case 0x0aea:	SDL_Scancode = 0x2E; key_mod = KEY_MOD_LSHIFT;   break; // '+'
+			case 0x0c1a:	SDL_Scancode = 0x20; key_mod = KEY_MOD_LSHIFT;   break; // '#'
+
+			case 0x02cc:	SDL_Scancode = 0x04; key_mod = 0; 	break; // 'a'
+			case 0x0c2c:	SDL_Scancode = 0x16; key_mod = 0; 	break; // 's'
+			case 0x02ac:	SDL_Scancode = 0x07; key_mod = 0; 	break; // 'd'
+			case 0x026c:	SDL_Scancode = 0x09; key_mod = 0; 	break; // 'f'
+			case 0x0aec:	SDL_Scancode = 0x0A; key_mod = 0; 	break; // 'g'
+			case 0x0c1c:	SDL_Scancode = 0x0B; key_mod = 0; 	break; // 'h'
+			case 0x0810:	SDL_Scancode = 0x0D; key_mod = 0; 	break; // 'j'
+			case 0x0490:	SDL_Scancode = 0x0E; key_mod = 0; 	break; // 'k'
+			case 0x0450:	SDL_Scancode = 0x0F; key_mod = 0; 	break; // 'l'
+			case 0x029c:	SDL_Scancode = 0x1C; key_mod = 0;  	break; // 'y'
+			case 0x025c:	SDL_Scancode = 0x1B; key_mod = 0;  	break; // 'x'
+			case 0x0adc:	SDL_Scancode = 0x06; key_mod = 0;  	break; // 'c'
+			case 0x023c:	SDL_Scancode = 0x19; key_mod = 0;  	break; // 'v'
+			case 0x0abc:	SDL_Scancode = 0x05; key_mod = 0;  	break; // 'b'
+			case 0x0a7c:	SDL_Scancode = 0x11; key_mod = 0;  	break; // 'n'
+			case 0x0430:	SDL_Scancode = 0x10; key_mod = 0;  	break; // 'm'
+
+			case 0x025a:	SDL_Scancode = 0x36; key_mod = 0; 	break; // ','
+			case 0x0cb0:	SDL_Scancode = 0x37; key_mod = 0; 	break; // '.'
+			case 0x0c70:	SDL_Scancode = 0x2D; key_mod = 0; 	break; // '-'
+			case 0x0c46:	SDL_Scancode = 0x36; key_mod = KEY_MOD_LSHIFT; 	break; // '<'       
+
+			case 0x0c38: 	SDL_Scancode = 0x29; key_mod = 0;	break; // ESCAPE
+			case 0x0c54: 	SDL_Scancode = 0x2A; key_mod = 0;	break; // BACKSPACE
+			case 0x0af2: 	SDL_Scancode = 0x50; key_mod = KEY_MOD_LCTRL;		break; // LEFT
+			case 0x0482: 	SDL_Scancode = 0x52; key_mod = KEY_MOD_LCTRL;		break; // UP
+			case 0x0272: 	SDL_Scancode = 0x51; key_mod = KEY_MOD_LCTRL;		break; // DOWN
+			case 0x0442: 	SDL_Scancode = 0x4F; key_mod = KEY_MOD_LCTRL;		break; // RIGHT
+			case 0x0804: 	SDL_Scancode = 0x40; key_mod = 0;  	break; // STOP
+                        case 0x02d4: 	SDL_Scancode = 0x2B; key_mod = 0;       break; // TABULATOR
+                        case 0x02f0: 	SDL_Scancode = 0x28; key_mod = 0;       break; // ENTER
+			case 0x0808: 	SDL_Scancode = 0x3A; key_mod = 0;	break; // F1
+			case 0x0488: 	SDL_Scancode = 0x3B; key_mod = 0;	break; // F2
+			case 0x0448: 	SDL_Scancode = 0x3C; key_mod = 0;	break; // F3
+			case 0x0cc8: 	SDL_Scancode = 0x3D; key_mod = 0;	break; // F4
+			case 0x0428: 	SDL_Scancode = 0x3E; key_mod = 0;	break; // F5
+			case 0x0ca8: 	SDL_Scancode = 0x3F; key_mod = 0;	break; // F6
+			case 0x0c68: 	SDL_Scancode = 0x40; key_mod = 0;	break; // F7
+			case 0x02e8: 	SDL_Scancode = 0x41; key_mod = 0;	break; // F8
+			case 0x0418: 	SDL_Scancode = 0x42; key_mod = 0;	break; // F9
+			case 0x0c98: 	SDL_Scancode = 0x43; key_mod = 0;	break; // F10
+			case 0x0c58: 	SDL_Scancode = 0x44; key_mod = 0;	break; // F11
+			case 0x02d8: 	SDL_Scancode = 0x45; key_mod = 0;	break; // F12
+                        case 0x02aa: 	SDL_Scancode = 0x2C; key_mod = 0;       break; // SPACE
+			case 0x0484: 	SDL_Scancode = 0x23; key_mod = KEY_MOD_LSHIFT;    break; // '^'
+                        case 0x0ca2: 	SDL_Scancode = 0x4B; key_mod = 0;       break; // Page up
+                        case 0x0c4a: 	SDL_Scancode = 0x4E; key_mod = 0;       break; // Page down
+			//        case 0x0c32: SDL_Scancode = KEY_INSERT;              break; // INSERT
+			//        case 0x040a: SDL_Scancode = KEY_DELETE;              break; // DELETE
+
+        }
+    }
+	
+	SDL_Code.SDL_Scancode = SDL_Scancode;
+	SDL_Code.key_mod = key_mod;
+}
+
+#endif // K8561_KEYBOARD
+
+#ifdef SERIAL_KEYBOARD
+
+#define KEY_ESCAPE          0x1B 
+#define KEY_BACK            0x7F
+#define KEY_MENUE           0x80
+#define KEY_FORWARD         0x82
+#define KEY_ADDRESS         0x83
+#define KEY_WINDOW          0x84
+#define KEY_1ST_PAGE        0x85
+#define KEY_STOP            0x86
+#define KEY_MAIL            0x87
+#define KEY_FAVORITES       0x88
+#define KEY_NEW_PAGE        0x89
+#define KEY_SETUP           0x8A
+#define KEY_FONT            0x8B
+#define KEY_PRINT           0x8C
+#define KEY_ON_OFF          0x8E
+
+#define KEY_INSERT          0x90
+#define KEY_DELETE          0x91
+#define KEY_LEFT            0x92
+#define KEY_HOME            0x93
+#define KEY_END             0x94
+#define KEY_UP              0x95
+#define KEY_DOWN            0x96
+#define KEY_PAGE_UP         0x97
+#define KEY_PAGE_DOWN       0x98
+#define KEY_RIGHT           0x99
+#define KEY_TAB             0x09
+#define KEY_ENTER			0x0A
+
+#define KEY_F1	0x9A
+#define KEY_F2	0x9B
+#define KEY_F3  0x9C
+#define KEY_F4  0x9D
+#define KEY_F5  0x9E
+#define KEY_F6  0x9F
+#define KEY_F7  0xA0
+#define KEY_F8  0xA1
+#define KEY_F9  0xA2
+#define KEY_F10 0xA3
+#define KEY_F11 0xA4
+#define KEY_F12 0xA5
+
+const uint8_t _ascii2scancode[][3] =
+{
+	{'A', 0x04, 0},
+	{'B', 0x05, 0},
+	{'C', 0x06, 0},
+	{'D', 0x07, 0},
+	{'E', 0x08, 0},
+	{'F', 0x09, 0},
+	{'G', 0x0A, 0},
+	{'H', 0x0B, 0},
+	{'I', 0x0C, 0},
+	{'J', 0x0D, 0},
+	{'K', 0x0E, 0},
+	{'L', 0x0F, 0},
+	{'M', 0x10, 0},
+	{'N', 0x11, 0},
+	{'O', 0x12, 0},
+	{'P', 0x13, 0},
+	{'Q', 0x14, 0},
+	{'R', 0x15, 0},
+	{'S', 0x16, 0},
+	{'T', 0x17, 0},
+	{'U', 0x18, 0},
+	{'V', 0x19, 0},
+	{'W', 0x1A, 0},
+	{'X', 0x1B, 0},
+	{'Y', 0x1C, 0},
+	{'Z', 0x1D, 0},
+	{'a', 0x04, 0},
+	{'b', 0x05, 0},
+	{'c', 0x06, 0},
+	{'d', 0x07, 0},
+	{'e', 0x08, 0},
+	{'f', 0x09, 0},
+	{'g', 0x0A, 0},
+	{'h', 0x0B, 0},
+	{'i', 0x0C, 0},
+	{'j', 0x0D, 0},
+	{'k', 0x0E, 0},
+	{'l', 0x0F, 0},
+	{'m', 0x10, 0},
+	{'n', 0x11, 0},
+	{'o', 0x12, 0},
+	{'p', 0x13, 0},
+	{'q', 0x14, 0},
+	{'r', 0x15, 0},
+	{'s', 0x16, 0},
+	{'t', 0x17, 0},
+	{'u', 0x18, 0},
+	{'v', 0x19, 0},
+	{'w', 0x1A, 0},
+	{'x', 0x1B, 0},
+	{'y', 0x1C, 0},
+	{'z', 0x1D, 0},	
+	{'1', 0x1E, 0},
+	{'!', 0x1E, KEY_MOD_LSHIFT},
+	{'2', 0x1F, 0},
+	{'@', 0x1F, KEY_MOD_LSHIFT},
+	{'3', 0x20, 0},
+	{'#', 0x20, KEY_MOD_LSHIFT},
+	{'4', 0x21, 0},
+	{'$', 0x21, KEY_MOD_LSHIFT},
+	{'5', 0x22, 0},
+	{'%', 0x22, KEY_MOD_LSHIFT},
+	{'6', 0x23, 0},
+	{'&', 0x23, KEY_MOD_LSHIFT},
+	{'7', 0x24, 0},
+	{'8', 0x25, 0},
+	{'*', 0x25, KEY_MOD_LSHIFT},
+	{'9', 0x26, 0},
+	{'(', 0x26, KEY_MOD_LSHIFT},
+	{'0', 0x27, 0},
+	{')', 0x27, KEY_MOD_LSHIFT},
+	{KEY_ENTER,   0x28, 0},
+	{KEY_ESCAPE,  0x29, 0},
+	{KEY_BACK, 	  0x2A, 0},
+	{KEY_TAB,     0x2B, 0},
+	{' ', 0x2C, 0},
+	{'-', 0x2D, 0},
+	{'_', 0x2D, KEY_MOD_LSHIFT},
+	{'=', 0x2E, 0},
+	{'+', 0x2E, KEY_MOD_LSHIFT},	
+	{'[', 0x2F, KEY_MOD_LSHIFT},
+	{']', 0x30, KEY_MOD_LSHIFT},
+	{'|', 0x31, KEY_MOD_LSHIFT},
+	{';', 0x33, 0},
+	{':', 0x33, KEY_MOD_LSHIFT},
+	{'\"',0x34, KEY_MOD_LSHIFT},
+	{',', 0x36, 0},	
+	{'<', 0x36, KEY_MOD_LSHIFT},
+	{'.', 0x37, 0},
+	{'>', 0x37, KEY_MOD_LSHIFT},
+	{'/', 0x38, 0},
+	{'?', 0x38, KEY_MOD_LSHIFT},
+	{KEY_F1, 0x3A, 0},
+	{KEY_F2, 0x3B, 0},
+	{KEY_F3, 0x3C, 0},
+	{KEY_F4, 0x3D, 0},
+	{KEY_F5, 0x3E, 0},
+	{KEY_F6, 0x3F, 0},
+	{KEY_F7, 0x40, 0},
+	{KEY_F8, 0x41, 0},
+	{KEY_F9, 0x42, 0},
+	{KEY_F10,0x43, 0},
+	{KEY_F11,0x44, 0},
+	{KEY_F12,0x45, 0},	
+	{KEY_RIGHT, 0x4F, KEY_MOD_LCTRL},
+	{KEY_LEFT, 0x50, KEY_MOD_LCTRL},
+	{KEY_DOWN, 0x51, KEY_MOD_LCTRL},
+	{KEY_UP, 0x52, KEY_MOD_LCTRL},
+};
+
+
+int get_hid_serial(uint8_t* dst)
+{
+	bool dirty = false;
+	static int wt_expire = 0;
+	int wt_modifiers = 0;
+	int incomingByte = 0;
+	incomingByte = getchar();
+	
+	if (incomingByte != -1)
+	{
+		int scancode = -1;
+		for (int i=0; i < sizeof(_ascii2scancode); i++)
+		{
+			if (_ascii2scancode[i][0]== incomingByte)
+			{
+				scancode = _ascii2scancode[i][1];
+				wt_modifiers = _ascii2scancode[i][2];
+				break;
+			}			
+
+		}
+		// scancode = incomingByte;
+		// wt_modifiers = KEY_MOD_LCTRL;
+		if (scancode != -1)
+		{
+			printf("Key=%d->0x%02x\n", incomingByte, scancode);
+			
+			// generate hid keyboard events if anything was pressed or changed...
+			// A1 01 mods XX k k k k k k
+			dst[0] = 0xA1;
+			dst[1] = 0x01;
+			dst[2] = wt_modifiers;
+			dst[3] = 0;
+			dst[4] = (char)scancode;  // Scancode
+			wt_expire = 10;
+			dirty = true;
+		}
+	}
+	else
+	{
+		if (wt_expire-- == 0)
+		{
+			dst[0] = 0xA1;
+			dst[1] = 0x01;
+			dst[2] = 0;
+			dst[3] = 0;
+			dst[4] = 0;  // Scancode
+			dirty = true;
+		}			
+	}
+	
+    return dirty ? 10 : 0;
+}
+#endif // SERIAL_KEYBOARD
+
+#endif // __ir_input__

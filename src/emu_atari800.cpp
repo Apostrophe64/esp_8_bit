@@ -583,8 +583,8 @@ const int16_t _scancode_to_atari[512] = {
     // shift
      -1, -1, -1, -1,127, 85, 82,122,106,120,125,121, 77, 65, 69, 64,
     101, 99, 72, 74,111,104,126,109, 75, 80,110, 86,107, 87, 95,117,
-     90, 88, 93, 71, 91,  7,112,114, 76, 92,116,108, 97, 78,  6,112,
-    114, 79, -1, 66, 94, -1, 54, 55,102,124, -1, -1, -1, -1, -3, -1,
+     90, 88, 93, 71, 91,  7,112,114, 76, 92,116,108, 97, 78,  6,96,
+    98, 79, -1, 66, 94, -1, 54, 55,102,124, -1, -1, -1, -1, -3, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
      -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -948,6 +948,10 @@ public:
         _lines = 0;
         _ext = _atari_ext;
         _help = _atari_help;
+
+        // Init_screen as soon as possible, because memory fragmentation
+        init_screen();
+
         Sound_desired.freq = audio_frequency;
     }
 
@@ -1261,7 +1265,16 @@ public:
 
         // no idea. just go with defaults of xl
         string host = path.substr(0,path.find_last_of("/"));
+#if ATARI800_MACHINE_TYPE == 0
+		printf("Starting as AtariXL\n");
         return "-xl \"" + path + "\"" + " -H1 \"" + host + "\"";
+#elif ATARI800_MACHINE_TYPE == 1
+		printf("Starting as Atari800\n");
+		return "-atari \"" + path + "\"" + " -H1 \"" + host + "\"";
+#elif ATARI800_MACHINE_TYPE == 2
+		printf("Starting as Atari400 with 52KB\n");
+        return "-atari -c \"" + path + "\"" + " -H1 \"" + host + "\"";
+#endif
     }
 
     //  default media is basic/dos
@@ -1311,6 +1324,8 @@ public:
         string cfg = get_cfg(path);
         cfg = patch_cfg(cfg,flags);
         int argc = parse_cfg(cfg,s,argv);
+		for (int i=0; i< argc; i++)
+			printf("argv=%s\n", argv[i]);
         libatari800_init(argc,&argv[0]);
         return 0;
     }

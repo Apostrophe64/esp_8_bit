@@ -578,6 +578,7 @@ public:
     // map to sort
     void read_directory(const char* name)
     {
+        printf("Read directory %s\n", name);
         _path = name;
         _files.clear();
         map<string,int> files;  // sort by name
@@ -585,16 +586,19 @@ public:
         if (!dirp)
             return;             // no folder yet
         struct dirent * dp;
+		uint8_t counter = 1;
         while ((dp = readdir(dirp)) != NULL) {
             if (dp->d_type == DT_DIR) {
                 // directory
             } else {
                 string ext = get_ext(dp->d_name);
+                printf("  %d.) %s\n", counter++, dp->d_name);
                 int e = want(ext.c_str());
                 if (e != -1)
                     files[dp->d_name] = e;
             }
         }
+        printf("\n");
         for (auto& p : files)
             _files.push_back(p.first);
         closedir(dirp);

@@ -49,6 +49,7 @@ Emu* NewEmulator()
   #if (EMULATOR==EMU_ATARI)
   return NewAtari800(VIDEO_STANDARD);
   #endif
+  
   printf("Must choose one of the following emulators: EMU_NES,EMU_SMS,EMU_ATARI\n");
 }
 
@@ -94,8 +95,8 @@ esp_err_t mount_filesystem()
   vTaskDelay(300 / portTICK_RATE_MS); //a small delay to let SD card power up
 
   sdmmc_host_t host = SDSPI_HOST_DEFAULT();
-  //host.command_timeout_ms=200;
-  //host.max_freq_khz = SDMMC_FREQ_PROBING;
+  host.command_timeout_ms=200;
+  host.max_freq_khz = SDMMC_FREQ_PROBING;
 
   sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
   slot_config.gpio_miso =  (gpio_num_t)CONFIG_SD_MISO;
@@ -113,9 +114,10 @@ esp_err_t mount_filesystem()
   sdmmc_card_t *card;
   esp_err_t e = esp_vfs_fat_sdmmc_mount("", &host, &slot_config, &mount_config, &card);
 
-  if (e) printf("Failed to mount SD card");
-  else sdmmc_card_print_info(stdout, card);  // Card has been initialized, print its properties
-
+  if (e)
+    printf("Failed to mount SD card\n");
+  else
+    sdmmc_card_print_info(stdout, card);  // Card has been initialized, print its properties
 #else
 //Use ESP spiffs
   printf("\n\n\nesp_8_bit\n\nmounting spiffs (will take ~15 seconds if formatting for the first time)....\n");
@@ -143,15 +145,17 @@ void setup()
     printf("Warning this revision of the chip has an issue with the APLL and will not work properly!\n");
       
   rtc_clk_cpu_freq_set(RTC_CPU_FREQ_240M);  
+  _emu = NewEmulator();                     // create the emulator before mounting,
+  											// so get more free memory to alloc screen memory.
   mount_filesystem();                       // mount the filesystem!
-  _emu = NewEmulator();                     // create the emulator!
   hid_init("emu32");                        // bluetooth hid on core 1!
 
   #ifdef SINGLE_CORE
   emu_init();
   video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump on app core
+  	printf("Single core heap size=%d\n", esp_get_free_heap_size());
   #else
-  xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 3*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
+  	xTaskCreatePinnedToCore(emu_task, "emu_task", EMULATOR == EMU_NES ? 5*1024 : 4*1024, NULL, 0, NULL, 0); // nofrendo needs 5k word stack, start on core 0
   #endif
 }
 
@@ -187,6 +191,7 @@ void loop()
       printf("video_init\n");
       video_init(_emu->cc_width,_emu->flavor,_emu->composite_palette(),_emu->standard); // start the A/V pump
       _inited = true;
+      printf("Dual core heap size=%d\n", esp_get_free_heap_size());
     } else {
       vTaskDelay(1);
     }
