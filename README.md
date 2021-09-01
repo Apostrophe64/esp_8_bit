@@ -248,6 +248,8 @@ Short answer is you don't. When a large cart is selected it gets copied into `Cr
 
 ![Input Devices](img/inputdevices.jpg)
 
+![Input Devices](img/K8561.jpg)
+
 A number of IR input devices are supported if to add a optional IR receiver (TSOP38238, TSOP4838 or equivalent) to pin 0. The IR Wireless Controllers from Atari Flashback 4 work well and have that classic Atari joystick feel. Retron IR controllers are supported as are WebTV keyboards that come in various guises: WebTV, MsnTV, Displayer, UltimateTV etc. They all should work just fine. A few places have the nice Philips variant new for $11.95 w/ free shipping (search for 'SWK-8630'). If you made a [ZorkDuino](https://hackaday.com/2014/04/30/the-zorkduino/) you will have one of these.
 
 # Time to Play
