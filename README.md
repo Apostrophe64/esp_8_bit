@@ -28,10 +28,10 @@ The build can fit inside a gameboy clam shell with real NES connectors.
     |         |     3.3v <-> NES (or SNES) controller VCC A&B
     |         |      gnd <-> NES (or SNES) controller GND A&B
     |         | 
-    |      15 |------------> SD card CS
-    |      13 |------------> SD card MOSI
-    |      14 |------------> SD card SCLK
-    |      12 |------------> SD card MISO
+    |      26 |------------> SD card CS
+    |      14 |------------> SD card MOSI
+    |      33 |------------> SD card SCLK
+    |      13 |------------> SD card MISO
     |         |     3.3v <-> SD card Vcc
     |         |      gnd <-> SD card GND
     |         | 
