@@ -586,7 +586,7 @@ public:
         if (!dirp)
             return;             // no folder yet
         struct dirent * dp;
-		uint8_t counter = 1;
+		uint16_t counter = 1;
         while ((dp = readdir(dirp)) != NULL) {
             if (dp->d_type == DT_DIR) {
                 // directory
