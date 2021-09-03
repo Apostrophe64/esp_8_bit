@@ -821,7 +821,7 @@ int get_hid_ir(uint8_t* dst)
 #define STATE_LEFT_ALT      0x10
 #define STATE_RIGHT_ALT     0x20
 
-#if (1)
+
 // Will be called every frame (25Hz/30Hz)
 int get_hid_K8561(uint8_t* dst)
 {
@@ -841,7 +841,7 @@ int get_hid_K8561(uint8_t* dst)
 
 		bKeyDown = ((_K8561KeyCode & 0x0100) != 0) ? false : true;
 #if (0)
-		printf("data:0x%04x\t -> aascii=0x%02x mod=0x%02x %\t", _K8561KeyCode, SDL_Code.SDL_Scancode, SDL_Code.key_mod);
+		printf("data:0x%04x\t -> SDL_Scancode=0x%02x mod=0x%02x %\t", _K8561KeyCode, SDL_Code.SDL_Scancode, SDL_Code.key_mod);
 		for (int k = 15; k >= 0; k--)
 		   printf("%c", (_K8561KeyCode & 1 << k) ? '1' : '0');
 		printf("\n");		
@@ -894,61 +894,6 @@ int get_hid_K8561(uint8_t* dst)
 	}
 	return dirty ? 10 : 0;
 }
-#else
-// Will be called every frame (25Hz/30Hz)
-int get_hid_K8561(uint8_t* dst)
-{
-	bool dirty = false;
-	static int wt_expire = 0;
-	int wt_modifiers = 0;
-	SDL_KEYCODE SDL_Code;
-	
-	static int counter = 0;
-
-	// To prevent too many keystrokes from being sent
-	// only communicate the last keystroke every 200ms.
-	if ((counter++ >= 10) && (_K8561KeyCode != 0xffff))
-	{
-		_K8561_To_SDL_Scancode(_K8561KeyCode, SDL_Code);
-#if (0)
-		printf("data:0x%04x\t -> aascii=0x%02x mod=0x%02x %\t", _K8561KeyCode, SDL_Code.SDL_Scancode, SDL_Code.key_mod);
-		for (int k = 15; k >= 0; k--)
-		   printf("%c", (_K8561KeyCode & 1 << k) ? '1' : '0');
-		printf("\n");		
-#endif
-  	    _K8561KeyCode = 0xffff;
-	    counter = 0;	
-	}	
-	
-	if (SDL_Code.SDL_Scancode != 0)
-	{
-		// generate hid keyboard events if anything was pressed or changed...
-		// A1 01 mods XX k k k k k k
-		dst[0] = 0xA1;
-		dst[1] = 0x01;
-		dst[2] = SDL_Code.key_mod;
-		dst[3] = 0;
-		dst[4] = SDL_Code.SDL_Scancode;  // Scancode
-		wt_expire = 10;
-		dirty = true;
-	}
-	else
-	{
-		if (wt_expire-- == 0)
-		{
-			dst[0] = 0xA1;
-			dst[1] = 0x01;
-			dst[2] = 0;
-			dst[3] = 0;
-			dst[4] = 0;  // Scancode
-			dirty = true;
-		}			
-	}
-	
-    return dirty ? 10 : 0;
-}
-#endif
-
 
 #define START(_t) (_t >= 23 && _t <= 28) // Streuung zwischen 25 und 26
 #define SHORT(_t) (_t >= 5 && _t <= 8)   // Streuung zwischen 6 und 7
@@ -1005,8 +950,8 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
 	
     switch (cmd)
     {
-        case 0x06fc: state |=  STATE_LEFT_SHIFT;    break;              // pressed left shift
-        case 0x07fc: state &= ~STATE_LEFT_SHIFT;    break;              // released left shift      
+        case 0x06fc: state |=  STATE_LEFT_SHIFT; SDL_Scancode=0xE1;   break;              // pressed left shift
+        case 0x07fc: state &= ~STATE_LEFT_SHIFT; SDL_Scancode=0xE1;    break;              // released left shift      
         case 0x0c2a: state |=  STATE_RIGHT_SHIFT;   break;              // pressed right shift
         case 0x0d2a: state &= ~STATE_RIGHT_SHIFT;   break;              // released right shift
         case 0x02b2: state |=  STATE_LEFT_CTRL;     break;              // pressed left ctrl
@@ -1056,7 +1001,7 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
           case 0x04a0:  SDL_Scancode = 0x0C; key_mod = 0;  			  break; // 'I'
           case 0x0460:  SDL_Scancode = 0x12; key_mod = 0;  			  break; // 'O'
           case 0x0ce0:  SDL_Scancode = 0x13; key_mod = 0;  			  break; // 'P'
-          case 0x0aea:  SDL_Scancode = 0x25; key_mod = KEY_MOD_LSHIFT;            break; // '*'
+          case 0x0aea:  SDL_Scancode = 0x25; key_mod = KEY_MOD_LSHIFT;break; // '*'
           case 0x02cc:  SDL_Scancode = 0x04; key_mod = 0; 			  break; // 'A'
           case 0x0c2c:  SDL_Scancode = 0x16; key_mod = 0; 			  break; // 'S'
           case 0x02ac:  SDL_Scancode = 0x07; key_mod = 0; 			  break; // 'D'
@@ -1074,13 +1019,15 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
           case 0x0a7c:  SDL_Scancode = 0x11; key_mod = 0;  			  break; // 'N'
           case 0x0430:  SDL_Scancode = 0x10; key_mod = 0;  			  break; // 'M'
           case 0x025a:  SDL_Scancode = 0x33; key_mod = 0; 			  break; // ';'
-          case 0x0cb0:  SDL_Scancode = 0x33; key_mod = KEY_MOD_LSHIFT;            break; // ':'
+          case 0x0cb0:  SDL_Scancode = 0x33; key_mod = KEY_MOD_LSHIFT;break; // ':'
           case 0x0c1a:  SDL_Scancode = 0x34; key_mod = 0; 			  break; // '''
-          case 0x0c70:  SDL_Scancode = 0x2D; key_mod = KEY_MOD_LSHIFT;            break; // '_'
-          case 0x0c46:  SDL_Scancode = 0x37; key_mod = KEY_MOD_LSHIFT;            break; // '>'
-          case 0x0428: 	SDL_Scancode = 0x3E; key_mod = KEY_MOD_LSHIFT;            break; // Shift F5
-          case 0x02f0: 	SDL_Scancode = 0x28; key_mod = KEY_MOD_LSHIFT;            break; // Shift ENTER
-        }
+          case 0x0c70:  SDL_Scancode = 0x2D; key_mod = KEY_MOD_LSHIFT;break; // '_'
+          case 0x0c46:  SDL_Scancode = 0x37; key_mod = KEY_MOD_LSHIFT;break; // '>'
+          case 0x0428: 	SDL_Scancode = 0x3E; key_mod = KEY_MOD_LSHIFT;break; // Shift F5
+          case 0x02f0: 	SDL_Scancode = 0x28; key_mod = KEY_MOD_LSHIFT;break; // Shift ENTER
+		  case 0x0c32: 	SDL_Scancode = 0x49; key_mod = KEY_MOD_LSHIFT;break; // INSERT (One line)
+  		  case 0x040a: 	SDL_Scancode = 0x4C; key_mod = KEY_MOD_LSHIFT;  break; // DELETE (One line)
+       }
     }
     else if (state & (STATE_LEFT_ALT | STATE_RIGHT_ALT))
     {
@@ -1125,7 +1072,9 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
           case 0x0abc:	SDL_Scancode = 0x05; key_mod = KEY_MOD_LCTRL;  	break; // 'B'
           case 0x0a7c:	SDL_Scancode = 0x11; key_mod = KEY_MOD_LCTRL;  	break; // 'N'
           case 0x0430:	SDL_Scancode = 0x10; key_mod = KEY_MOD_LCTRL;  	break; // 'M'
-        }
+		  case 0x0c32: 	SDL_Scancode = 0x49; key_mod = KEY_MOD_LCTRL; 	break; // INSERT (One character)
+  		  case 0x040a: 	SDL_Scancode = 0x4C; key_mod = KEY_MOD_LCTRL;   break; // DELETE (One character right side)
+		  }
     }
     else
     {
@@ -1184,8 +1133,8 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
 			case 0x0272: 	SDL_Scancode = 0x51; key_mod = KEY_MOD_LCTRL;		break; // DOWN
 			case 0x0442: 	SDL_Scancode = 0x4F; key_mod = KEY_MOD_LCTRL;		break; // RIGHT
 			case 0x0804: 	SDL_Scancode = 0x40; key_mod = 0;  	break; // STOP
-                        case 0x02d4: 	SDL_Scancode = 0x2B; key_mod = 0;       break; // TABULATOR
-                        case 0x02f0: 	SDL_Scancode = 0x28; key_mod = 0;       break; // ENTER
+            case 0x02d4: 	SDL_Scancode = 0x2B; key_mod = 0;   break; // TABULATOR
+            case 0x02f0: 	SDL_Scancode = 0x28; key_mod = 0;   break; // ENTER
 			case 0x0808: 	SDL_Scancode = 0x3A; key_mod = 0;	break; // F1
 			case 0x0488: 	SDL_Scancode = 0x3B; key_mod = 0;	break; // F2
 			case 0x0448: 	SDL_Scancode = 0x3C; key_mod = 0;	break; // F3
@@ -1198,12 +1147,12 @@ void _K8561_To_SDL_Scancode(uint16_t cmd, SDL_KEYCODE& SDL_Code)
 			case 0x0c98: 	SDL_Scancode = 0x43; key_mod = 0;	break; // F10
 			case 0x0c58: 	SDL_Scancode = 0x44; key_mod = 0;	break; // F11
 			case 0x02d8: 	SDL_Scancode = 0x45; key_mod = 0;	break; // F12
-                        case 0x02aa: 	SDL_Scancode = 0x2C; key_mod = 0;       break; // SPACE
+            case 0x02aa: 	SDL_Scancode = 0x2C; key_mod = 0;   break; // SPACE
 			case 0x0484: 	SDL_Scancode = 0x23; key_mod = KEY_MOD_LSHIFT;    break; // '^'
-                        case 0x0ca2: 	SDL_Scancode = 0x4B; key_mod = 0;       break; // Page up
-                        case 0x0c4a: 	SDL_Scancode = 0x4E; key_mod = 0;       break; // Page down
-			//        case 0x0c32: SDL_Scancode = KEY_INSERT;              break; // INSERT
-			//        case 0x040a: SDL_Scancode = KEY_DELETE;              break; // DELETE
+            case 0x0ca2: 	SDL_Scancode = 0x4B; key_mod = 0;   break; // Page up
+            case 0x0c4a: 	SDL_Scancode = 0x4E; key_mod = 0;   break; // Page down
+			case 0x0c32: 	SDL_Scancode = 0x49; key_mod = KEY_MOD_LCTRL; 	break; // INSERT (One character)
+			case 0x040a: 	SDL_Scancode = 0x4C; key_mod = 0;  break; // DELETE (One character left side)
 
         }
     }
